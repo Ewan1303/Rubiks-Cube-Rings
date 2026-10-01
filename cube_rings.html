@@ -15,6 +15,7 @@
   --ring: #808080;
   --accent: #1d43c4;
   --accent-ink: #ffffff;
+  --tint: rgba(29, 67, 196, .22);
   --good: #0b7a40;
   --edge: #000000;
   --core: #000000;
@@ -32,6 +33,7 @@
     --ring: #7c838c;
     --accent: #8fa9ff;
     --accent-ink: #0c1326;
+    --tint: rgba(143, 169, 255, .3);
     --good: #5fd394;
     color-scheme: dark;
   }
@@ -45,6 +47,7 @@
   --ring: #7c838c;
   --accent: #8fa9ff;
   --accent-ink: #0c1326;
+  --tint: rgba(143, 169, 255, .3);
   --good: #5fd394;
   color-scheme: dark;
 }
@@ -123,7 +126,7 @@ kbd { min-width: 1.9em; padding: 4px 6px; border: 1px solid var(--line); border-
     <div class="column">
       <section>
         <p class="label">Mouse and touch</p>
-        <p>Drag a dot along its ring, or a square across the cube, to turn that layer. Click or tap a ring (or its letter) to turn it, and a dot or square to turn its face. Right-click or Shift-click turns the other way.</p>
+        <p>Drag a dot along its ring, or a square across the cube, to turn that layer. Click or tap a ring (or its letter) to turn it, and a dot or square to turn its face. Right-click or Shift-click turns the other way. Hover over a ring to see what it moves. An inner or outer ring also spins the face on that side of the cube, so that face's nine dots light up too, even though they sit away from the ring.</p>
       </section>
       <section>
         <p class="label">Solver</p>
@@ -178,6 +181,9 @@ const UNIT = 10.54;                             // pixels per diagram unit
 const AXIS_ANGLE = [-30, 90, 210];              // degrees, anticlockwise from east
 const RING_RADIUS = { 1: 7, 0: 9, "-1": 11 };   // layer coordinate -> radius
 const DOT_RADIUS = 8.3, RING_WIDTH = 1.4, DOT_EDGE_WIDTH = 0.8;
+// The face a hovered ring turns: how far its wash reaches from each dot's
+// centre, and the width of its dots' edges, drawn in the ring's colour.
+const TINT_RADIUS = DOT_RADIUS + 6, FACE_EDGE_WIDTH = 1.7;
 // Each ring's letter (the key that turns it) sits this many degrees round
 // from its axis centre, in a gap clear of dots and crossings.
 const LABEL_ANGLE = { U: 60, E: 86, D: 105, F: 228, S: 198, B: 186, R: -58, M: -26, L: 0 };
@@ -266,6 +272,11 @@ const LABELS = Object.entries(LABEL_ANGLE).map(([letter, angle]) => {
   const t = angle * Math.PI / 180, c = ringCentre(axis), r = RING_RADIUS[layer];
   return { letter, ring: key([axis, layer]), at: toPage([c[0] + r * Math.cos(t), c[1] + r * Math.sin(t)]) };
 });
+// Turning an inner or outer ring also spins the face on that side of the
+// cube (as an index into FACES). That face's nine dots sit where the other two
+// sets of rings cross, so nothing on the ring itself shows that they move.
+const RING_FACE = {};
+for (const [face, [axis, sign]] of Object.entries(NORMAL)) RING_FACE[key([axis, sign])] = FACES.indexOf(face);
 
 // --- moves --------------------------------------------------------------------
 
@@ -781,7 +792,7 @@ const tokens = {};
 
 function readTokens() {
   const css = getComputedStyle(document.documentElement);
-  for (const name of ["plate", "ink", "ring", "accent", "edge", "core", "display"]) {
+  for (const name of ["plate", "ink", "ring", "accent", "tint", "edge", "core", "display"]) {
     tokens[name] = css.getPropertyValue("--" + name).trim();
   }
 }
@@ -813,6 +824,25 @@ function drawRings(ctx, dots) {
     ctx.arc(RING_CENTRES[axis][0], RING_CENTRES[axis][1], UNIT * RING_RADIUS[layer], 0, 2 * Math.PI);
     ctx.stroke();
   };
+  // A wash behind the face that the hovered ring turns, so it's clear those
+  // dots move too: broad lines along the face's rows and columns, stroked
+  // together so that where they overlap they don't darken.
+  const face = (lit && RING_FACE[lit]) ?? -1;
+  if (face >= 0) {
+    const dot = (row, col) => DOTS[face * 9 + row * 3 + col];
+    ctx.save();
+    ctx.beginPath();
+    for (let k = 0; k < 3; k++) {
+      for (const line of [[dot(k, 0), dot(k, 1), dot(k, 2)], [dot(0, k), dot(1, k), dot(2, k)]]) {
+        line.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      }
+    }
+    ctx.lineWidth = 2 * TINT_RADIUS;
+    ctx.lineCap = ctx.lineJoin = "round";
+    ctx.strokeStyle = tokens.tint;
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.lineWidth = RING_WIDTH;
   ctx.strokeStyle = tokens.ring;
   RINGS.filter(ring => key(ring) !== lit).forEach(circle);
@@ -832,13 +862,14 @@ function drawRings(ctx, dots) {
     ctx.fillStyle = ring === lit ? tokens.accent : tokens.ink;
     ctx.fillText(letter, x, y + (up - down) / 2);
   }
-  ctx.lineWidth = DOT_EDGE_WIDTH;
-  ctx.strokeStyle = tokens.edge;
   dots.forEach(([x, y], i) => {
+    const turning = Math.floor(i / 9) === face;
     ctx.beginPath();
     ctx.arc(x, y, DOT_RADIUS, 0, 2 * Math.PI);
     ctx.fillStyle = COLOURS[state[i]];
     ctx.fill();
+    ctx.lineWidth = turning ? FACE_EDGE_WIDTH : DOT_EDGE_WIDTH;
+    ctx.strokeStyle = turning ? tokens.accent : tokens.edge;
     ctx.stroke();
   });
 }
