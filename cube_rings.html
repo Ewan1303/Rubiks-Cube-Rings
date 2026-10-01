@@ -1,0 +1,1307 @@
+<title>Rubik's Cube Rings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=STIX+Two+Text:wght@500;700&display=swap">
+<style>
+/* Layout: one figure plate holding the live puzzle (ring diagram beside the
+   solid cube), with its controls, move log and key guide set beneath it the
+   way a caption sits under a figure. */
+:root {
+  --page: #eceef1;
+  --plate: #ffffff;
+  --ink: #16181b;
+  --muted: #59606a;
+  --line: #d2d7dd;
+  --ring: #808080;
+  --accent: #1d43c4;
+  --accent-ink: #ffffff;
+  --good: #0b7a40;
+  --edge: #000000;
+  --core: #000000;
+  --display: "STIX Two Text", "STIX Two", Georgia, "Times New Roman", serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #111316;
+    --plate: #1a1d21;
+    --ink: #e8eaed;
+    --muted: #9aa1aa;
+    --line: #2d3238;
+    --ring: #7c838c;
+    --accent: #8fa9ff;
+    --accent-ink: #0c1326;
+    --good: #5fd394;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #111316;
+  --plate: #1a1d21;
+  --ink: #e8eaed;
+  --muted: #9aa1aa;
+  --line: #2d3238;
+  --ring: #7c838c;
+  --accent: #8fa9ff;
+  --accent-ink: #0c1326;
+  --good: #5fd394;
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 400 15px/1.55 var(--body); }
+.sheet { max-width: 1000px; margin-inline: auto; padding-inline: 16px; padding-block: 28px 56px; display: grid; gap: 22px; }
+@media (min-width: 720px) { .sheet { padding-inline: 32px; } }
+header { display: grid; gap: 8px; }
+.eyebrow, .label { margin: 0; font: 500 12px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font: 700 clamp(30px, 5.2vw, 46px)/1.05 var(--display); letter-spacing: -.01em; text-wrap: balance; }
+.dek { margin: 0; max-width: 62ch; font-size: 16px; color: var(--muted); }
+.plate { margin: 0; background: var(--plate); border: 1px solid var(--line); border-radius: 6px; padding: clamp(6px, 1.6vw, 18px); }
+.panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 920px; margin-inline: auto; }
+@media (max-width: 640px) { .panels { grid-template-columns: minmax(0, 440px); justify-content: center; } }
+canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 1 / 1; touch-action: none; user-select: none; -webkit-user-select: none; }
+canvas.over { cursor: pointer; }
+canvas.dragging { cursor: grabbing; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: 500 14px/1 var(--body); padding: 10px 15px; border-radius: 5px; border: 1px solid var(--line); background: var(--plate); color: var(--ink); cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.solve { border-color: var(--accent); color: var(--accent); min-width: 7.2em; }
+button.solve:hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--plate)); }
+button:disabled { opacity: .45; cursor: default; }
+.status { margin: 0; display: flex; align-items: center; gap: 10px; min-height: 28px; font: 500 14px/1.3 var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+.chip { font: 600 12px/1 var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--good); border: 1px solid currentColor; border-radius: 999px; padding: 5px 9px; }
+.log { display: grid; gap: 6px; min-width: 0; }
+.moves { margin: 0; min-height: 1.7em; font: 400 16px/1.7 var(--mono); overflow-wrap: anywhere; }
+.moves .last { color: var(--accent); font-weight: 500; }
+.moves .done { color: var(--muted); }
+.moves.empty { font: 400 15px/1.7 var(--body); color: var(--muted); }
+.guide { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 18px 40px; padding-top: 18px; border-top: 1px solid var(--line); }
+.guide section { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.guide .column { display: grid; gap: 22px; align-content: start; min-width: 0; }
+.guide p { margin: 0; max-width: 60ch; }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0; align-items: baseline; }
+.keys dt { display: flex; flex-wrap: wrap; gap: 4px; }
+.keys dd { margin: 0; color: var(--muted); }
+kbd { min-width: 1.9em; padding: 4px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--plate); color: var(--ink); font: 500 12.5px/1 var(--mono); text-align: center; }
+</style>
+
+<main class="sheet">
+  <header>
+    <p class="eyebrow">9 rings · 54 stickers · 1 cube</p>
+    <h1>Rubik's Cube Rings</h1>
+    <p class="dek">Each of the cube's nine layers is drawn as a circle, and each sticker is a dot where its two layers cross. Turn a ring and the solid cube turns with it.</p>
+  </header>
+
+  <figure class="plate">
+    <div class="panels">
+      <canvas id="rings" role="img" aria-label="Ring diagram: nine circles, one for each layer of the cube, with a dot for every sticker"></canvas>
+      <canvas id="solid" role="img" aria-label="The same cube drawn in perspective"></canvas>
+    </div>
+  </figure>
+
+  <div class="bar">
+    <div class="buttons">
+      <button id="scramble" class="primary" type="button">Scramble</button>
+      <button id="solve" class="solve" type="button" title="Find a short solution and play it one move at a time">Solve</button>
+      <button id="step" type="button" title="Play the next move of the solution" hidden>Step</button>
+      <button id="undo" type="button">Undo</button>
+      <button id="reset" type="button" title="Back to the starting scramble">Reset</button>
+      <button id="solved" type="button" title="Show a solved cube">Solved</button>
+    </div>
+    <p class="status" id="status" aria-live="polite"></p>
+  </div>
+
+  <section class="log">
+    <p class="label" id="log-label">Moves</p>
+    <p class="moves" id="moves"></p>
+  </section>
+
+  <div class="guide">
+    <div class="column">
+      <section>
+        <p class="label">Mouse and touch</p>
+        <p>Drag a dot along its ring, or a square across the cube, to turn that layer. Click or tap a ring (or its letter) to turn it, and a dot or square to turn its face. Right-click or Shift-click turns the other way.</p>
+      </section>
+      <section>
+        <p class="label">Solver</p>
+        <p>Solve spends a couple of seconds hunting for the shortest solution it can find, usually 19 or 20 moves for a well-scrambled cube (no position needs more than 20), then plays it one move at a time. Pause it to step through by hand. A half turn such as R2 counts as one move.</p>
+      </section>
+    </div>
+    <section>
+      <p class="label">Keys</p>
+      <dl class="keys">
+        <dt><kbd>U</kbd><kbd>E</kbd><kbd>D</kbd></dt><dd>top rings, inside to outside</dd>
+        <dt><kbd>F</kbd><kbd>S</kbd><kbd>B</kbd></dt><dd>lower-left rings</dd>
+        <dt><kbd>R</kbd><kbd>M</kbd><kbd>L</kbd></dt><dd>lower-right rings</dd>
+        <dt><kbd>X</kbd><kbd>Y</kbd><kbd>Z</kbd></dt><dd>the whole cube, turning like R, U and F</dd>
+        <dt><kbd>Shift</kbd></dt><dd>with any of those, turns the other way</dd>
+        <dt><kbd>Space</kbd></dt><dd>scramble</dd>
+        <dt><kbd>Backspace</kbd></dt><dd>undo</dd>
+        <dt><kbd>Enter</kbd></dt><dd>solve, or pause and resume the solution</dd>
+        <dt><kbd>→</kbd></dt><dd>next move of a paused solution</dd>
+      </dl>
+    </section>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+// --- the cube ---------------------------------------------------------------
+
+// The starting state is the scramble in the original picture, as a net. Each
+// face is seen from outside with U at the top (U itself has B at the top, D
+// has F at the top).
+const STATE = {
+  U: ["gbc", "grg", "bcr"],
+  L: ["mbr", "gmg", "cbg"],
+  F: ["gyb", "ygy", "ybb"],
+  R: ["cmm", "mbc", "ycc"],
+  B: ["rrr", "mcr", "mrb"],
+  D: ["myg", "cyr", "ymy"],
+};
+const FACES = ["U", "L", "F", "R", "B", "D"];
+const COLOURS = { r: "#ff0000", g: "#00ff00", b: "#0000ff", y: "#ffff00", c: "#00ffff", m: "#ff00ff" };
+
+// Sizes and positions are in pixels of the original 738 x 369 picture. Each
+// canvas shows a 369-pixel square of it, centred on its own drawing.
+const PANEL = 369;
+const DIAGRAM_CENTRE = [200.33, 184.5];
+const CUBE_CENTRE = [537.67, 184.5];
+
+// Ring diagram, in its own units. Axis 0 is x (towards R), 1 is y (towards U),
+// 2 is z (towards F).
+const UNIT = 10.54;                             // pixels per diagram unit
+const AXIS_ANGLE = [-30, 90, 210];              // degrees, anticlockwise from east
+const RING_RADIUS = { 1: 7, 0: 9, "-1": 11 };   // layer coordinate -> radius
+const DOT_RADIUS = 8.3, RING_WIDTH = 1.4, DOT_EDGE_WIDTH = 0.8;
+// Each ring's letter (the key that turns it) sits this many degrees round
+// from its axis centre, in a gap clear of dots and crossings.
+const LABEL_ANGLE = { U: 60, E: 86, D: 105, F: 228, S: 198, B: 186, R: -58, M: -26, L: 0 };
+const LABEL_PX = 16.7;
+
+// Solid cube: the camera sits AZIMUTH degrees round from F towards R,
+// ELEVATION degrees up and DISTANCE cubie widths from the centre.
+const AZIMUTH = 39.22, ELEVATION = 28.67, DISTANCE = 9.35, FOCAL = 490.8, EDGE_WIDTH = 1.0;
+
+const TURN_MS = 250, FAST_TURN_MS = 70, SCRAMBLE_LENGTH = 25;
+const SEARCH_MS = 2500, STEP_PAUSE_MS = 450;    // the solver's search time; its pause between moves
+const DRAG = 6, GRAB = 9, TOUCH_SLACK = 5;      // pixels
+
+// [axis, sign] of each face's outward normal.
+const NORMAL = { R: [0, 1], L: [0, -1], U: [1, 1], D: [1, -1], F: [2, 1], B: [2, -1] };
+
+// name: [axis, layers, quarter turns about the axis, right-handed]
+const MOVES = {
+  R: [0, [1], -1], M: [0, [0], 1], L: [0, [-1], 1],
+  U: [1, [1], -1], E: [1, [0], 1], D: [1, [-1], 1],
+  F: [2, [1], -1], S: [2, [0], -1], B: [2, [-1], 1],
+  x: [0, [-1, 0, 1], -1], y: [1, [-1, 0, 1], -1], z: [2, [-1, 0, 1], -1],
+};
+
+// Coordinates, each -1..1, of the cubie under a sticker of the net.
+function cubie(face, row, col) {
+  switch (face) {
+    case "U": return [col - 1, 1, row - 1];
+    case "D": return [col - 1, -1, 1 - row];
+    case "F": return [col - 1, 1 - row, 1];
+    case "B": return [1 - col, 1 - row, -1];
+    case "R": return [1, 1 - row, 1 - col];
+    case "L": return [-1, 1 - row, col - 1];
+  }
+}
+
+function outward(face) {
+  const [axis, sign] = NORMAL[face];
+  return [0, 1, 2].map(i => (i === axis ? sign : 0));
+}
+
+const key = (...vectors) => vectors.map(v => v.join(",")).join("|");
+
+// The 54 sticker slots in net order, with the cubie and outward normal of each.
+const SLOTS = FACES.flatMap(face => [0, 1, 2].flatMap(row => [0, 1, 2].map(col => [face, row, col])));
+const GEOMETRY = SLOTS.map(([face, row, col]) => [cubie(face, row, col), outward(face)]);
+const SLOT_AT = new Map(GEOMETRY.map(([p, n], i) => [key(p, n), i]));
+const FACE_AT = new Map(FACES.map(face => [key(outward(face)), face]));
+const PICTURE = FACES.flatMap(face => [...STATE[face].join("")]);
+const SOLVED = SLOTS.map(([face]) => STATE[face][1][1]);
+
+// --- ring diagram -------------------------------------------------------------
+
+function ringCentre(axis) {
+  const t = AXIS_ANGLE[axis] * Math.PI / 180;
+  return [5 * Math.cos(t), 5 * Math.sin(t)];
+}
+
+// Both points where circle (c1, r1) crosses circle (c2, r2).
+function crossings(c1, r1, c2, r2) {
+  const d = Math.hypot(c2[0] - c1[0], c2[1] - c1[1]);
+  const ex = [(c2[0] - c1[0]) / d, (c2[1] - c1[1]) / d], ey = [-ex[1], ex[0]];
+  const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d), h = Math.sqrt(r1 * r1 - a * a);
+  const mid = [c1[0] + a * ex[0], c1[1] + a * ex[1]];
+  return [[mid[0] + h * ey[0], mid[1] + h * ey[1]], [mid[0] - h * ey[0], mid[1] - h * ey[1]]];
+}
+
+function dotPosition(face, row, col) {
+  const [axis, sign] = NORMAL[face];
+  const pos = cubie(face, row, col);
+  const [a, b] = [0, 1, 2].filter(i => i !== axis);
+  const [p, q] = crossings(ringCentre(a), RING_RADIUS[pos[a]], ringCentre(b), RING_RADIUS[pos[b]]);
+  // The inner crossing is the one on the same side as the centre of the
+  // face's own axis; the faces towards the viewer (U, F, R) take it.
+  const c = ringCentre(axis);
+  const pInner = (p[0] - q[0]) * c[0] + (p[1] - q[1]) * c[1] > 0;
+  return (sign > 0) === pInner ? p : q;
+}
+
+const toPage = ([u, v]) => [DIAGRAM_CENTRE[0] + UNIT * u, DIAGRAM_CENTRE[1] - UNIT * v];
+const RING_CENTRES = [0, 1, 2].map(axis => toPage(ringCentre(axis)));
+const DOTS = SLOTS.map(slot => toPage(dotPosition(...slot)));
+const RINGS = [0, 1, 2].flatMap(axis => [1, 0, -1].map(layer => [axis, layer]));
+const LABELS = Object.entries(LABEL_ANGLE).map(([letter, angle]) => {
+  const [axis, [layer]] = MOVES[letter];
+  const t = angle * Math.PI / 180, c = ringCentre(axis), r = RING_RADIUS[layer];
+  return { letter, ring: key([axis, layer]), at: toPage([c[0] + r * Math.cos(t), c[1] + r * Math.sin(t)]) };
+});
+
+// --- moves --------------------------------------------------------------------
+
+// v after q quarter turns about the axis.
+function turn([x, y, z], axis, q) {
+  for (let i = 0; i < ((q % 4) + 4) % 4; i++) {
+    [x, y, z] = [[x, -z, y], [z, y, -x], [-y, x, z]][axis];
+  }
+  return [x, y, z];
+}
+
+// perm[i] is the slot the sticker in slot i ends up in.
+function permutation([axis, layers, q]) {
+  return GEOMETRY.map(([p, n], i) =>
+    layers.includes(p[axis]) ? SLOT_AT.get(key(turn(p, axis, q), turn(n, axis, q))) : i);
+}
+
+function moveName([axis, layers, q]) {
+  for (const [name, [a, ls, forward]] of Object.entries(MOVES)) {
+    if (a === axis && ls.join() === layers.join()) return name + (q === forward ? "" : q === -forward ? "'" : "2");
+  }
+}
+
+const mod = (a, n) => ((a % n) + n) % n;
+const polar = (dx, dy) => [Math.atan2(dy, dx), Math.hypot(dx, dy)];
+
+// How each dot travels during a move: a spiral about a centre, given as the
+// centre, the starting [angle, radius], and the change in each.
+function dotPaths(move, perm = permutation(move)) {
+  const [axis, layers, q] = move;
+  // A half turn goes round the same way as a quarter turn in its direction.
+  const quarter = Math.abs(q) === 2 ? dotPaths([axis, layers, Math.sign(q)]) : null;
+  const centre = DOTS.slice(), start = DOTS.map(() => [0, 0]), change = DOTS.map(() => [0, 0]);
+  const groups = new Map(), senses = new Map();
+  perm.forEach((j, i) => {
+    if (i === j) return;
+    const [p, n] = GEOMETRY[i];
+    let group;
+    if (n[axis]) {        // on the turning face: spin round the face's centre dot
+      group = "face " + key(n);
+      centre[i] = DOTS[FACES.indexOf(FACE_AT.get(key(n))) * 9 + 4];
+    } else {              // on the side of the layer: slide round its ring
+      group = "ring " + p[axis];
+      centre[i] = RING_CENTRES[axis];
+    }
+    const [cx, cy] = centre[i];
+    start[i] = polar(DOTS[i][0] - cx, DOTS[i][1] - cy);
+    const end = polar(DOTS[j][0] - cx, DOTS[j][1] - cy);
+    change[i] = [end[0] - start[i][0], end[1] - start[i][1]];
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push(i);
+  });
+  // A group's dots all go round the same way. The median hop, taken the short
+  // way, says which; then every dot goes that way, however far.
+  for (const [group, members] of groups) {
+    let sense = quarter && quarter.senses.get(group);
+    if (!sense) {
+      const hops = members.map(i => Math.atan2(Math.sin(change[i][0]), Math.cos(change[i][0]))).sort((a, b) => a - b);
+      const half = hops.length >> 1;
+      sense = Math.sign(hops.length % 2 ? hops[half] : (hops[half - 1] + hops[half]) / 2);
+    }
+    senses.set(group, sense);
+    for (const i of members) change[i][0] = sense * mod(sense * change[i][0], 2 * Math.PI);
+  }
+  return { centre, start, change, senses };
+}
+
+function dotPositions({ centre, start, change }, e) {
+  return centre.map(([cx, cy], i) => {
+    const angle = start[i][0] + e * change[i][0], radius = start[i][1] + e * change[i][1];
+    return [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)];
+  });
+}
+
+// +1 if a +1 quarter turn of the layer sends its ring's dots clockwise on the
+// page, else -1; and the quarter turn each ring's letter stands for.
+const RING_SENSE = {}, RING_FORWARD = {};
+for (const [axis, layer] of RINGS) {
+  const move = [axis, [layer], 1];
+  const { change } = dotPaths(move, permutation(move));
+  const i = GEOMETRY.findIndex(([p, n]) => p[axis] === layer && !n[axis]);
+  RING_SENSE[key([axis, layer])] = Math.sign(change[i][0]);
+}
+for (const [axis, layers, q] of Object.values(MOVES)) {
+  if (layers.length === 1) RING_FORWARD[key([axis, layers[0]])] = q;
+}
+
+// --- solid cube -----------------------------------------------------------------
+
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+
+const CAMERA = (() => {
+  const az = AZIMUTH * Math.PI / 180, el = ELEVATION * Math.PI / 180;
+  const eye = [DISTANCE * Math.sin(az) * Math.cos(el), DISTANCE * Math.sin(el), DISTANCE * Math.cos(az) * Math.cos(el)];
+  const forward = eye.map(v => -v / DISTANCE);
+  const across = cross3(forward, [0, 1, 0]), length = Math.hypot(...across);
+  const right = across.map(v => v / length);
+  return { eye, forward, right, up: cross3(right, forward) };
+})();
+
+function project(point) {
+  const d = [point[0] - CAMERA.eye[0], point[1] - CAMERA.eye[1], point[2] - CAMERA.eye[2]];
+  const depth = dot3(d, CAMERA.forward);
+  return [CUBE_CENTRE[0] + FOCAL * dot3(d, CAMERA.right) / depth,
+          CUBE_CENTRE[1] - FOCAL * dot3(d, CAMERA.up) / depth];
+}
+
+function rotation(axis, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return [[[1, 0, 0], [0, c, -s], [0, s, c]],
+          [[c, 0, s], [0, 1, 0], [-s, 0, c]],
+          [[c, -s, 0], [s, c, 0], [0, 0, 1]]][axis];
+}
+const spin = (m, v) => [dot3(m[0], v), dot3(m[1], v), dot3(m[2], v)];
+
+const CUBIES = [];
+for (const x of [-1, 0, 1]) for (const y of [-1, 0, 1]) for (const z of [-1, 0, 1]) {
+  if (x || y || z) CUBIES.push([x, y, z]);
+}
+
+// Every face of every cubie: which cubie, its corners, its outward normal, and
+// the slot of the sticker it carries (-1 if it faces inwards).
+const CUBIE_FACES = CUBIES.flatMap((p, owner) => [0, 1, 2].flatMap(axis => [-1, 1].map(sign => {
+  const normal = [0, 1, 2].map(i => (i === axis ? sign : 0));
+  const [a, b] = [0, 1, 2].filter(i => i !== axis);
+  const corners = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]].map(([da, db]) => {
+    const corner = p.map((v, i) => v + 0.5 * normal[i]);
+    corner[a] += da;
+    corner[b] += db;
+    return corner;
+  });
+  const slot = SLOT_AT.get(key(p, normal));
+  return { owner, corners, normal, slot: slot === undefined ? -1 : slot };
+})));
+
+// The cubie faces turned towards the camera, back to front, with their
+// outlines on the page.
+function cubeFaces(move, angle) {
+  const axis = move ? move[0] : 1, layers = move ? move[1] : [];
+  const m = rotation(axis, angle), eye = CAMERA.eye, side = Math.sign(eye[axis]);
+  const faces = [];
+  CUBIE_FACES.forEach((face, index) => {
+    const p = CUBIES[face.owner];
+    const turning = layers.includes(p[axis]);
+    const corners = turning ? face.corners.map(c => spin(m, c)) : face.corners;
+    const normal = turning ? spin(m, face.normal) : face.normal;
+    const owner = turning ? spin(m, p) : p;
+    const centre = [0, 1, 2].map(i => (corners[0][i] + corners[1][i] + corners[2][i] + corners[3][i]) / 4);
+    if (dot3([eye[0] - centre[0], eye[1] - centre[1], eye[2] - centre[2]], normal) <= 1e-9) return;
+    // Slabs across the turning axis never overlap, so paint the far slab
+    // first, and within each slab the cubies from far to near.
+    const far = Math.hypot(eye[0] - owner[0], eye[1] - owner[1], eye[2] - owner[2]);
+    faces.push({ index, slab: p[axis] * side, far, points: corners.map(project) });
+  });
+  return faces.sort((f, g) => f.slab - g.slab || g.far - f.far);
+}
+
+const REST_FACES = cubeFaces(null, 0);
+const SQUARES = REST_FACES.filter(f => CUBIE_FACES[f.index].slot >= 0)
+  .map(f => ({ quad: f.points, slot: CUBIE_FACES[f.index].slot }));
+
+function inside(quad, [x, y]) {
+  let left = 0, right = 0;
+  for (let i = 0; i < 4; i++) {
+    const [x1, y1] = quad[i], [x2, y2] = quad[(i + 1) % 4];
+    const c = (x1 - x) * (y2 - y) - (y1 - y) * (x2 - x);
+    if (c >= 0) left++;
+    if (c <= 0) right++;
+  }
+  return left === 4 || right === 4;
+}
+
+// --- turning by hand ----------------------------------------------------------
+
+const LEVI_CIVITA = { "0,1,2": 1, "1,2,0": 1, "2,0,1": 1, "0,2,1": -1, "2,1,0": -1, "1,0,2": -1 };
+
+// A clockwise turn of the face a sticker is on (anticlockwise if reversed).
+function faceTurn(slot, reverse) {
+  const [axis, sign] = NORMAL[SLOTS[slot][0]];
+  return [axis, [sign], reverse ? sign : -sign];
+}
+
+// Turn whichever ring the drag from `at` runs along, the way it went.
+function ringDrag(rings, at, drag) {
+  const along = ([axis]) => {
+    const r = [at[0] - RING_CENTRES[axis][0], at[1] - RING_CENTRES[axis][1]];
+    const length = Math.hypot(r[0], r[1]);
+    return (-r[1] / length * drag[0] + r[0] / length * drag[1]) / Math.hypot(drag[0], drag[1]);
+  };
+  const best = rings.reduce((u, v) => (Math.abs(along(v)) > Math.abs(along(u)) ? v : u));
+  const [axis, layer] = best;
+  return [axis, [layer], RING_SENSE[key(best)] * Math.sign(along(best))];
+}
+
+// Turn the layer that carries a sticker of the solid cube the way the drag
+// across it went.
+function squareDrag(slot, drag) {
+  const [p, n] = GEOMETRY[slot];
+  const normal = n.findIndex(v => v !== 0);
+  const centre = p.map((v, i) => v + 0.5 * n[i]);
+  const along = a => {
+    const step = centre.slice();
+    step[a] += 0.5;
+    const [x0, y0] = project(centre), [x1, y1] = project(step);
+    return ((x1 - x0) * drag[0] + (y1 - y0) * drag[1]) / (Math.hypot(x1 - x0, y1 - y0) * Math.hypot(drag[0], drag[1]));
+  };
+  const [a1, a2] = [0, 1, 2].filter(i => i !== normal);
+  const a = Math.abs(along(a2)) > Math.abs(along(a1)) ? a2 : a1;
+  const k = 3 - normal - a;
+  // A +1 turn about axis k carries the sticker along k x n.
+  return [k, [p[k]], Math.sign(along(a)) * n[normal] * LEVI_CIVITA[[k, normal, a].join()]];
+}
+
+// --- solver -------------------------------------------------------------------
+
+// The stickers as the solver reads them, U1..U9 R1..R9 F1..F9 D1..D9 L1..L9
+// B1..B9, each named by the face whose centre has its colour. Naming them by
+// the centres keeps this right after slice moves and whole-cube turns.
+function faceletsOf(stickers) {
+  const faceOf = {};
+  FACES.forEach((face, f) => { faceOf[stickers[f * 9 + 4]] = face; });
+  return [..."URFDLB"].map(face => {
+    const f = FACES.indexOf(face);
+    return stickers.slice(f * 9, f * 9 + 9).map(colour => faceOf[colour]).join("");
+  }).join("");
+}
+
+// A solver move (face * 3 + 0 for clockwise, 1 for a half turn, 2 for
+// anticlockwise, with faces in the order U R F D L B) as a move here.
+function solverMove(m) {
+  const [axis, sign] = NORMAL["URFDLB"[Math.floor(m / 3)]];
+  return [axis, [sign], [-sign, -2 * sign, sign][m % 3]];
+}
+
+// Kociemba's two-phase algorithm. Phase 1 brings the cube into the group that
+// U, D, R2, L2, F2 and B2 generate: no edge flipped, no corner twisted, and
+// the four middle-layer edges in the middle layer. Phase 2 finishes with those
+// moves alone. After the first solution it keeps searching for shorter ones
+// until its time is up. It runs in a worker, so it stands alone: nothing else
+// on the page is visible in here.
+function solverModule() {
+  "use strict";
+  // Corners URF UFL ULB UBR DFR DLF DBL DRB; edges UR UF UL UB DR DF DL DB FR
+  // FL BL BR. For each clockwise face turn (U R F D L B): the piece that ends
+  // up in each position, and the twist or flip it picks up on the way.
+  const BASIC = [
+    [[3, 0, 1, 2, 4, 5, 6, 7], [0, 0, 0, 0, 0, 0, 0, 0], [3, 0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+    [[4, 1, 2, 0, 7, 5, 6, 3], [2, 0, 0, 1, 1, 0, 0, 2], [8, 1, 2, 3, 11, 5, 6, 7, 4, 9, 10, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+    [[1, 5, 2, 3, 0, 4, 6, 7], [1, 2, 0, 0, 2, 1, 0, 0], [0, 9, 2, 3, 4, 8, 6, 7, 1, 5, 10, 11], [0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0]],
+    [[0, 1, 2, 3, 5, 6, 7, 4], [0, 0, 0, 0, 0, 0, 0, 0], [0, 1, 2, 3, 5, 6, 7, 4, 8, 9, 10, 11], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+    [[0, 2, 6, 3, 4, 1, 5, 7], [0, 1, 2, 0, 0, 2, 1, 0], [0, 1, 10, 3, 4, 5, 9, 7, 8, 2, 6, 11], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+    [[0, 1, 3, 7, 4, 5, 2, 6], [0, 0, 1, 2, 0, 0, 2, 1], [0, 1, 2, 11, 4, 5, 6, 10, 8, 9, 3, 7], [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1]],
+  ].map(([cp, co, ep, eo]) => ({ cp, co, ep, eo }));
+  const IDENTITY = { cp: [0, 1, 2, 3, 4, 5, 6, 7], co: [0, 0, 0, 0, 0, 0, 0, 0],
+                     ep: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], eo: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
+
+  // Cube a, then cube b.
+  function multiply(a, b) {
+    return {
+      cp: b.cp.map(p => a.cp[p]),
+      co: b.cp.map((p, i) => (a.co[p] + b.co[i]) % 3),
+      ep: b.ep.map(p => a.ep[p]),
+      eo: b.ep.map((p, i) => (a.eo[p] + b.eo[i]) % 2),
+    };
+  }
+
+  // The 18 moves, face * 3 + power.
+  const MOVE_CUBES = [];
+  for (const basic of BASIC) {
+    let cube = IDENTITY;
+    for (let power = 0; power < 3; power++) MOVE_CUBES.push(cube = multiply(cube, basic));
+  }
+  // The moves phase 2 keeps to: U, U2, U', R2, F2, D, D2, D', L2, B2.
+  const PHASE2 = [0, 1, 2, 4, 7, 9, 10, 11, 13, 16];
+  const IN_PHASE2 = MOVE_CUBES.map((_, m) => PHASE2.includes(m));
+
+  // --- coordinates: each part of the cube's state as one number, 0 when solved.
+  const CHOOSE = [];
+  for (let n = 0; n <= 12; n++) {
+    CHOOSE[n] = [];
+    for (let k = 0; k <= 4; k++) CHOOSE[n][k] = k === 0 ? 1 : n === 0 ? 0 : CHOOSE[n - 1][k - 1] + CHOOSE[n - 1][k];
+  }
+  const choose = (n, k) => (n < k ? 0 : CHOOSE[n][k]);
+  const twistOf = co => co.slice(0, 7).reduce((t, o) => 3 * t + o, 0);
+  const flipOf = eo => eo.slice(0, 11).reduce((f, o) => 2 * f + o, 0);
+  function sliceOf(ep) {                  // where the middle-layer edges are, in any order
+    let a = 0, x = 0;
+    for (let j = 11; j >= 0; j--) if (ep[j] >= 8) a += choose(11 - j, ++x);
+    return a;
+  }
+  function permIndex(p) {
+    let x = 0;
+    for (let i = 0; i < p.length; i++) {
+      let smaller = 0;
+      for (let j = i + 1; j < p.length; j++) if (p[j] < p[i]) smaller++;
+      x = x * (p.length - i) + smaller;
+    }
+    return x;
+  }
+  function permAt(x, n) {
+    const digits = [];
+    for (let i = n - 1; i >= 0; i--) {
+      digits[i] = x % (n - i);
+      x = Math.floor(x / (n - i));
+    }
+    const pool = [...Array(n).keys()];
+    return digits.map(d => pool.splice(d, 1)[0]);
+  }
+  function twistAt(t) {
+    const co = [];
+    let sum = 0;
+    for (let i = 6; i >= 0; i--) { co[i] = t % 3; sum += co[i]; t = Math.floor(t / 3); }
+    co[7] = (3 - sum % 3) % 3;
+    return co;
+  }
+  function flipAt(f) {
+    const eo = [];
+    let sum = 0;
+    for (let i = 10; i >= 0; i--) { eo[i] = f % 2; sum += eo[i]; f = Math.floor(f / 2); }
+    eo[11] = sum % 2;
+    return eo;
+  }
+  function sliceAt(a) {
+    const ep = new Array(12).fill(-1);
+    for (let x = 4; x >= 1; x--) {
+      let c = x - 1;
+      while (choose(c + 1, x) <= a) c++;
+      a -= choose(c, x);
+      ep[11 - c] = 12 - x;                // one of the middle-layer edges, 8..11
+    }
+    let other = 0;
+    for (let j = 0; j < 12; j++) if (ep[j] < 0) ep[j] = other++;
+    return ep;
+  }
+
+  // --- tables: how each move changes each coordinate, and how far each pair
+  // of coordinates is from solved (a lower bound that prunes the search).
+  const N_TWIST = 2187, N_FLIP = 2048, N_SLICE = 495, N_PERM = 40320, N_SORTED = 24;
+  let tables = null;
+
+  function prune(sizeA, sizeB, moveA, moveB, moves) {
+    const table = new Int8Array(sizeA * sizeB).fill(-1);
+    table[0] = 0;
+    let frontier = [0];
+    for (let depth = 1; frontier.length; depth++) {
+      const next = [];
+      for (const index of frontier) {
+        const a = Math.floor(index / sizeB), b = index - a * sizeB;
+        for (let m = 0; m < moves; m++) {
+          const j = moveA[a * moves + m] * sizeB + moveB[b * moves + m];
+          if (table[j] < 0) { table[j] = depth; next.push(j); }
+        }
+      }
+      frontier = next;
+    }
+    return table;
+  }
+
+  function init() {
+    if (tables) return tables;
+    const twistMove = new Uint16Array(N_TWIST * 18), flipMove = new Uint16Array(N_FLIP * 18);
+    const sliceMove = new Uint16Array(N_SLICE * 18);
+    for (let t = 0; t < N_TWIST; t++) {
+      const co = twistAt(t);
+      MOVE_CUBES.forEach((m, k) => { twistMove[t * 18 + k] = twistOf(m.cp.map((p, i) => (co[p] + m.co[i]) % 3)); });
+    }
+    for (let f = 0; f < N_FLIP; f++) {
+      const eo = flipAt(f);
+      MOVE_CUBES.forEach((m, k) => { flipMove[f * 18 + k] = flipOf(m.ep.map((p, i) => (eo[p] + m.eo[i]) % 2)); });
+    }
+    for (let s = 0; s < N_SLICE; s++) {
+      const ep = sliceAt(s);
+      MOVE_CUBES.forEach((m, k) => { sliceMove[s * 18 + k] = sliceOf(m.ep.map(p => ep[p])); });
+    }
+    const cornerMove = new Uint16Array(N_PERM * 10), edgeMove = new Uint16Array(N_PERM * 10);
+    const sortedMove = new Uint8Array(N_SORTED * 10);
+    for (let c = 0; c < N_PERM; c++) {
+      const perm = permAt(c, 8);          // serves for the corners and for the U and D edges
+      const ep = [...perm, 8, 9, 10, 11];
+      PHASE2.forEach((k, i) => {
+        const m = MOVE_CUBES[k];
+        cornerMove[c * 10 + i] = permIndex(m.cp.map(p => perm[p]));
+        edgeMove[c * 10 + i] = permIndex(m.ep.slice(0, 8).map(p => ep[p]));
+      });
+    }
+    for (let s = 0; s < N_SORTED; s++) {
+      const ep = [0, 1, 2, 3, 4, 5, 6, 7, ...permAt(s, 4).map(v => v + 8)];
+      PHASE2.forEach((k, i) => { sortedMove[s * 10 + i] = permIndex(MOVE_CUBES[k].ep.slice(8).map(p => ep[p] - 8)); });
+    }
+    tables = {
+      twistMove, flipMove, sliceMove, cornerMove, edgeMove, sortedMove,
+      twistPrune: prune(N_SLICE, N_TWIST, sliceMove, twistMove, 18),
+      flipPrune: prune(N_SLICE, N_FLIP, sliceMove, flipMove, 18),
+      cornerPrune: prune(N_PERM, N_SORTED, cornerMove, sortedMove, 10),
+      edgePrune: prune(N_PERM, N_SORTED, edgeMove, sortedMove, 10),
+    };
+    return tables;
+  }
+
+  const CORNER_FACELETS = [[8, 9, 20], [6, 18, 38], [0, 36, 47], [2, 45, 11], [29, 26, 15], [27, 44, 24], [33, 53, 42], [35, 17, 51]];
+  const EDGE_FACELETS = [[5, 10], [7, 19], [3, 37], [1, 46], [32, 16], [28, 25], [30, 43], [34, 52], [23, 12], [21, 41], [50, 39], [48, 14]];
+  const CORNER_NAMES = ["URF", "UFL", "ULB", "UBR", "DFR", "DLF", "DBL", "DRB"];
+  const EDGE_NAMES = ["UR", "UF", "UL", "UB", "DR", "DF", "DL", "DB", "FR", "FL", "BL", "BR"];
+
+  // The cube that 54 stickers (named by face, in solver order) make.
+  function fromFacelets(f) {
+    const cube = { cp: [], co: [], ep: [], eo: [] };
+    CORNER_FACELETS.forEach((stickers, i) => {
+      const twist = stickers.findIndex(s => f[s] === "U" || f[s] === "D");
+      const a = f[stickers[(twist + 1) % 3]], b = f[stickers[(twist + 2) % 3]];
+      cube.cp[i] = twist < 0 ? -1 : CORNER_NAMES.findIndex(name => name[1] === a && name[2] === b);
+      cube.co[i] = twist;
+    });
+    EDGE_FACELETS.forEach(([s, t], i) => {
+      const same = EDGE_NAMES.indexOf(f[s] + f[t]), swapped = EDGE_NAMES.indexOf(f[t] + f[s]);
+      cube.ep[i] = same >= 0 ? same : swapped;
+      cube.eo[i] = same >= 0 ? 0 : 1;
+    });
+    const parity = p => p.reduce((sum, v, i) => sum + p.slice(i + 1).filter(w => w < v).length, 0) % 2;
+    const whole = (p, n) => new Set(p).size === n && p.every(v => v >= 0);
+    const sum = values => values.reduce((s, v) => s + v, 0);
+    if (!whole(cube.cp, 8) || !whole(cube.ep, 12) || sum(cube.co) % 3 || sum(cube.eo) % 2
+        || parity(cube.cp) !== parity(cube.ep)) {
+      throw new Error("these stickers don't make a cube that can be solved");
+    }
+    return cube;
+  }
+
+  // The shortest solution found in `budget` milliseconds, as solver moves.
+  function solve(facelets, budget, onProgress) {
+    const t = init();
+    const cube = fromFacelets(facelets);
+    const deadline = Date.now() + budget;
+    const phase1Moves = [], phase2Moves = [];
+    let best = null, limit = 30, nodes = 0, stopped = false;
+    // Only once there is an answer to give; checked every 1024 positions.
+    const outOfTime = () => {
+      if (best && (++nodes & 1023) === 0 && Date.now() > deadline) stopped = true;
+      return stopped;
+    };
+
+    function phase2(corner, edge, sorted, depth, n, lastFace) {
+      if (depth === 0) return corner === 0 && edge === 0 && sorted === 0;
+      if (t.cornerPrune[corner * N_SORTED + sorted] > depth || t.edgePrune[edge * N_SORTED + sorted] > depth || outOfTime()) return false;
+      for (let i = 0; i < PHASE2.length; i++) {
+        const move = PHASE2[i], face = Math.floor(move / 3);
+        if (face === lastFace || face === lastFace - 3) continue;   // same face twice, or opposite faces both ways round
+        phase2Moves[n] = move;
+        if (phase2(t.cornerMove[corner * 10 + i], t.edgeMove[edge * 10 + i], t.sortedMove[sorted * 10 + i], depth - 1, n + 1, face)) return true;
+      }
+      return false;
+    }
+
+    function startPhase2(n) {
+      let c = cube;
+      for (let i = 0; i < n; i++) c = multiply(c, MOVE_CUBES[phase1Moves[i]]);
+      const corner = permIndex(c.cp), edge = permIndex(c.ep.slice(0, 8)), sorted = permIndex(c.ep.slice(8).map(v => v - 8));
+      const lastFace = n ? Math.floor(phase1Moves[n - 1] / 3) : -1;
+      const first = Math.max(t.cornerPrune[corner * N_SORTED + sorted], t.edgePrune[edge * N_SORTED + sorted]);
+      for (let depth = first; depth <= Math.min(limit - n, 18) && !stopped; depth++) {
+        if (phase2(corner, edge, sorted, depth, 0, lastFace)) {
+          best = phase1Moves.slice(0, n).concat(phase2Moves.slice(0, depth));
+          limit = best.length - 1;
+          if (onProgress) onProgress(best.length);
+          return;
+        }
+      }
+    }
+
+    function phase1(twist, flip, slice, depth, n, lastFace) {
+      if (depth === 0) {
+        // A last move that phase 2 could have made means a shorter phase 1 was already tried.
+        if (twist === 0 && flip === 0 && slice === 0 && (n === 0 || !IN_PHASE2[phase1Moves[n - 1]])) startPhase2(n);
+        return;
+      }
+      if (t.twistPrune[slice * N_TWIST + twist] > depth || t.flipPrune[slice * N_FLIP + flip] > depth || outOfTime()) return;
+      for (let face = 0; face < 6; face++) {
+        if (face === lastFace || face === lastFace - 3) continue;
+        for (let power = 0; power < 3; power++) {
+          const move = 3 * face + power;
+          phase1Moves[n] = move;
+          phase1(t.twistMove[twist * 18 + move], t.flipMove[flip * 18 + move], t.sliceMove[slice * 18 + move], depth - 1, n + 1, face);
+          if (stopped) return;
+        }
+      }
+    }
+
+    const twist = twistOf(cube.co), flip = flipOf(cube.eo), slice = sliceOf(cube.ep);
+    for (let depth = 0; depth <= limit && !stopped; depth++) phase1(twist, flip, slice, depth, 0, -1);
+    return { moves: best || [] };
+  }
+
+  return { init, solve, fromFacelets, multiply, MOVE_CUBES, sliceOf, sliceAt };
+}
+
+// --- the page -------------------------------------------------------------------
+
+const $ = id => document.getElementById(id);
+const panels = {
+  rings: { canvas: $("rings"), x0: DIAGRAM_CENTRE[0] - PANEL / 2 },
+  solid: { canvas: $("solid"), x0: CUBE_CENTRE[0] - PANEL / 2 },
+};
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const STORE = "cube-rings";
+
+let state = PICTURE.slice(), played = [], queue = [], current = null, frame = 0;
+let scrambling = false, press = null, hoverRing = null, notice = "";
+// The solver's answer while it's on the cube: its moves, how many of them
+// have started, and whether it's playing or paused.
+let solution = null, searching = false, searchBest = 0, stepTimer = 0;
+const tokens = {};
+
+function readTokens() {
+  const css = getComputedStyle(document.documentElement);
+  for (const name of ["plate", "ink", "ring", "accent", "edge", "core", "display"]) {
+    tokens[name] = css.getPropertyValue("--" + name).trim();
+  }
+}
+
+// Size a canvas to its box and the screen, and clear it to the plate.
+function begin({ canvas, x0 }) {
+  const size = Math.max(1, Math.round(canvas.getBoundingClientRect().width * (window.devicePixelRatio || 1)));
+  if (canvas.width !== size || canvas.height !== size) {
+    canvas.width = size;
+    canvas.height = size;
+  }
+  const k = size / PANEL, ctx = canvas.getContext("2d");
+  ctx.setTransform(k, 0, 0, k, -x0 * k, 0);
+  ctx.fillStyle = tokens.plate;
+  ctx.fillRect(x0, 0, PANEL, PANEL);
+  return ctx;
+}
+
+// Draw everything e of the way through the current move (0..1).
+function render(e = 0) {
+  drawRings(begin(panels.rings), current ? dotPositions(current.paths, e) : DOTS);
+  drawSolid(begin(panels.solid), current ? cubeFaces(current.move, current.move[2] * e * Math.PI / 2) : REST_FACES);
+}
+
+function drawRings(ctx, dots) {
+  const lit = hoverRing && key(hoverRing);
+  const circle = ([axis, layer]) => {
+    ctx.beginPath();
+    ctx.arc(RING_CENTRES[axis][0], RING_CENTRES[axis][1], UNIT * RING_RADIUS[layer], 0, 2 * Math.PI);
+    ctx.stroke();
+  };
+  ctx.lineWidth = RING_WIDTH;
+  ctx.strokeStyle = tokens.ring;
+  RINGS.filter(ring => key(ring) !== lit).forEach(circle);
+  if (lit) {
+    ctx.lineWidth = RING_WIDTH * 1.8;
+    ctx.strokeStyle = tokens.accent;
+    circle(hoverRing);
+  }
+  ctx.font = `700 ${LABEL_PX}px ${tokens.display}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  for (const { letter, ring, at: [x, y] } of LABELS) {
+    const m = ctx.measureText(letter);
+    const up = m.actualBoundingBoxAscent, down = m.actualBoundingBoxDescent, pad = 1.6;
+    ctx.fillStyle = tokens.plate;       // a patch of plate that breaks the ring behind the letter
+    ctx.fillRect(x - m.width / 2 - pad, y - (up + down) / 2 - pad, m.width + 2 * pad, up + down + 2 * pad);
+    ctx.fillStyle = ring === lit ? tokens.accent : tokens.ink;
+    ctx.fillText(letter, x, y + (up - down) / 2);
+  }
+  ctx.lineWidth = DOT_EDGE_WIDTH;
+  ctx.strokeStyle = tokens.edge;
+  dots.forEach(([x, y], i) => {
+    ctx.beginPath();
+    ctx.arc(x, y, DOT_RADIUS, 0, 2 * Math.PI);
+    ctx.fillStyle = COLOURS[state[i]];
+    ctx.fill();
+    ctx.stroke();
+  });
+}
+
+function drawSolid(ctx, faces) {
+  ctx.lineWidth = EDGE_WIDTH;
+  ctx.lineJoin = "miter";
+  ctx.strokeStyle = tokens.edge;
+  for (const { index, points } of faces) {
+    const slot = CUBIE_FACES[index].slot;
+    ctx.beginPath();
+    points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.closePath();
+    ctx.fillStyle = slot >= 0 ? COLOURS[state[slot]] : tokens.core;
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+// --- moves in time ---
+
+function play(move, record = true) {
+  queue.push({ move, record });
+  if (!frame) frame = requestAnimationFrame(step);
+}
+
+function step(now) {
+  frame = 0;
+  if (!current) {
+    if (!queue.length) return;
+    const { move, record } = queue.shift();
+    const perm = permutation(move);
+    const half = Math.abs(move[2]) === 2 ? 1.5 : 1;
+    const duration = reduceMotion.matches ? 0 : queue.length ? FAST_TURN_MS : TURN_MS * half;
+    current = { move, perm, paths: dotPaths(move, perm), start: now, duration, record };
+  }
+  const t = current.duration ? (now - current.start) / current.duration : 1;
+  if (t < 1) {
+    render(t * t * (3 - 2 * t));
+  } else {
+    const next = state.slice();
+    current.perm.forEach((j, i) => { next[j] = state[i]; });
+    state = next;
+    if (current.record) played.push(current.move);
+    current = null;
+    if (!queue.length) {
+      scrambling = false;
+      save();
+      if (solution && !solution.done) {
+        if (solution.next === solution.moves.length) solution.done = true;
+        else if (solution.playing) stepTimer = setTimeout(advance, STEP_PAUSE_MS);
+      }
+    }
+    render();
+    update();
+  }
+  if (current || queue.length) frame = requestAnimationFrame(step);
+}
+
+// A move made by hand. It leaves any solution behind.
+function userPlay(move) {
+  dropSolution();
+  play(move);
+}
+
+function dropSolution() {
+  clearTimeout(stepTimer);
+  stepTimer = 0;
+  solution = null;
+  notice = "";
+}
+
+function undo() {
+  if (!played.length) return;
+  dropSolution();
+  const [axis, layers, q] = played.pop();
+  play([axis, layers, -q], false);
+  update();
+}
+
+// --- the solver on the page ---
+
+// Play the solution's next move.
+function advance() {
+  clearTimeout(stepTimer);
+  stepTimer = 0;
+  if (!solution || solution.done || current || queue.length) return;
+  play(solution.moves[solution.next++], false);
+  update();
+}
+
+function stepOnce() {
+  if (solution && !solution.done && !solution.playing) advance();
+}
+
+// Solve, or pause and resume a solution that is playing.
+function solveOrPause() {
+  if (searching || scrambling) return;
+  if (solution && !solution.done) {
+    solution.playing = !solution.playing;
+    if (solution.playing) {
+      advance();
+    } else {
+      clearTimeout(stepTimer);
+      stepTimer = 0;
+    }
+    update();
+    return;
+  }
+  if (current || queue.length) return;
+  dropSolution();
+  if (isSolved()) {
+    update();
+    return;
+  }
+  const asked = faceletsOf(state);
+  searching = true;
+  searchBest = 0;
+  update();
+  findSolution(asked, length => { searchBest = length; update(); })
+    .then(moves => {
+      searching = false;
+      if (asked !== faceletsOf(state) || current || queue.length) {   // the cube moved while it searched
+        update();
+        return;
+      }
+      played = [];
+      solution = { moves: moves.map(solverMove), next: 0, playing: true, done: false };
+      update();
+      advance();
+    })
+    .catch(error => {
+      searching = false;
+      notice = `The solver stopped: ${error.message}.`;
+      update();
+    });
+}
+
+// The solver runs in a worker so the page keeps moving while it searches.
+// If the frame refuses workers, it runs here instead and the page waits.
+let worker = null, workerFailed = false, reply = null, inline = null;
+
+function solverWorker() {
+  if (worker || workerFailed) return worker;
+  try {
+    const source = `const solver = (${solverModule})();
+self.onmessage = event => {
+  const { id, facelets, budget } = event.data;
+  if (!facelets) { solver.init(); return; }
+  try {
+    const { moves } = solver.solve(facelets, budget, length => self.postMessage({ id, progress: length }));
+    self.postMessage({ id, moves });
+  } catch (error) {
+    self.postMessage({ id, error: String((error && error.message) || error) });
+  }
+};`;
+    worker = new Worker(URL.createObjectURL(new Blob([source], { type: "text/javascript" })));
+    worker.onmessage = event => reply && reply(event.data);
+    worker.onerror = () => {
+      workerFailed = true;
+      worker = null;
+      if (reply) reply({ failed: true });
+    };
+  } catch (_) {
+    workerFailed = true;
+    worker = null;
+  }
+  return worker;
+}
+
+function findSolution(facelets, onProgress) {
+  return new Promise((resolve, reject) => {
+    const id = Math.random();
+    const here = () => setTimeout(() => {
+      try {
+        inline = inline || solverModule();
+        resolve(inline.solve(facelets, SEARCH_MS, onProgress).moves);
+      } catch (error) {
+        reject(error);
+      }
+    }, 50);
+    const w = solverWorker();
+    if (!w) {
+      here();
+      return;
+    }
+    reply = data => {
+      if (data.failed) {
+        reply = null;
+        here();
+      } else if (data.id === id) {
+        if ("progress" in data) {
+          onProgress(data.progress);
+        } else {
+          reply = null;
+          if (data.error) reject(new Error(data.error));
+          else resolve(data.moves);
+        }
+      }
+    };
+    w.postMessage({ id, facelets, budget: SEARCH_MS });
+  });
+}
+
+function scramble() {
+  dropSolution();
+  played = [];
+  scrambling = true;
+  let previous = null;
+  for (let i = 0; i < SCRAMBLE_LENGTH; i++) {
+    const faces = [..."UDLRFB"].filter(face => face !== previous);
+    previous = faces[Math.floor(Math.random() * faces.length)];
+    const [axis, layers, q] = MOVES[previous];
+    play([axis, layers, Math.random() < 0.5 ? q : -q], false);
+  }
+  update();
+}
+
+function setState(next) {
+  dropSolution();
+  state = next.slice();
+  played = [];
+  queue = [];
+  current = null;
+  scrambling = false;
+  if (frame) cancelAnimationFrame(frame);
+  frame = 0;
+  render();
+  update();
+  save();
+}
+
+function isSolved() {
+  for (let face = 0; face < 6; face++) {
+    for (let i = 1; i < 9; i++) if (state[face * 9 + i] !== state[face * 9]) return false;
+  }
+  return true;
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+// A run of moves in notation, each marked by `mark(i)` as done, last or neither.
+function notation(moves, mark) {
+  return moves.flatMap((move, i) => {
+    const name = document.createElement("span");
+    name.textContent = moveName(move);
+    name.className = mark(i);
+    return i ? [" ", name] : [name];
+  });
+}
+
+function update() {
+  const n = played.length, live = solution && !solution.done;
+  const status = $("status"), log = $("moves"), label = $("log-label");
+  if (searching) {
+    status.replaceChildren(searchBest ? `Searching… ${plural(searchBest, "move")} so far` : "Searching…");
+  } else if (scrambling) {
+    status.replaceChildren("Scrambling…");
+  } else if (notice) {
+    status.replaceChildren(notice);
+  } else if (live) {
+    status.replaceChildren(`${solution.playing ? "Solving" : "Paused"} · move ${solution.next} of ${solution.moves.length}`);
+  } else if (isSolved()) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = "Solved";
+    status.replaceChildren(chip, solution ? `${solution.moves.length}-move solution` : n ? `in ${plural(n, "move")}` : "");
+  } else {
+    status.replaceChildren(plural(n, "move"));
+  }
+  if (solution) {
+    label.textContent = `Solution · ${plural(solution.moves.length, "move")}`;
+    log.classList.remove("empty");
+    log.replaceChildren(...notation(solution.moves, i =>
+      solution.done || i < solution.next - 1 ? "done" : i === solution.next - 1 ? "last" : ""));
+  } else if (n) {
+    label.textContent = "Moves";
+    log.classList.remove("empty");
+    log.replaceChildren(...notation(played, i => (i === n - 1 ? "last" : "")));
+  } else {
+    label.textContent = "Moves";
+    log.classList.add("empty");
+    log.textContent = "No moves yet. Press a ring's letter, drag a dot along its ring, or press Solve.";
+  }
+  const solve = $("solve"), stepButton = $("step");
+  solve.textContent = searching ? "Searching…" : live ? (solution.playing ? "Pause" : "Resume") : "Solve";
+  solve.disabled = searching || scrambling;
+  stepButton.hidden = !live;
+  stepButton.disabled = !live || solution.playing;
+  $("undo").disabled = n === 0;
+}
+
+// --- mouse, touch and keys ---
+
+function pictureXY({ canvas, x0 }, ev) {
+  const box = canvas.getBoundingClientRect(), s = PANEL / box.width;
+  return [x0 + (ev.clientX - box.left) * s, (ev.clientY - box.top) * s];
+}
+
+// What a press at `at` takes hold of: a dot (and its two rings), a ring, or a
+// square of the solid cube.
+function target(name, at, slack) {
+  if (name === "solid") {
+    const square = SQUARES.find(({ quad }) => inside(quad, at));
+    return square ? { kind: "square", slot: square.slot } : null;
+  }
+  let slot = 0, near = Infinity;
+  DOTS.forEach(([x, y], i) => {
+    const d = Math.hypot(x - at[0], y - at[1]);
+    if (d < near) { near = d; slot = i; }
+  });
+  if (near < DOT_RADIUS + 1 + slack) {
+    const [p, n] = GEOMETRY[slot];
+    return { kind: "dot", slot, rings: [0, 1, 2].filter(a => !n[a]).map(a => [a, p[a]]) };
+  }
+  const gap = ([axis, layer]) =>
+    Math.abs(Math.hypot(at[0] - RING_CENTRES[axis][0], at[1] - RING_CENTRES[axis][1]) - UNIT * RING_RADIUS[layer]);
+  const rings = RINGS.filter(ring => gap(ring) < GRAB + slack).sort((u, v) => gap(u) - gap(v));
+  return rings.length ? { kind: "ring", rings } : null;
+}
+
+function hover(name, at) {
+  const aim = at && target(name, at, 0);
+  panels[name].canvas.classList.toggle("over", !!aim);
+  if (name !== "rings") return;
+  const ring = aim && aim.kind === "ring" ? aim.rings[0] : null;
+  if (String(ring) !== String(hoverRing)) {
+    hoverRing = ring;
+    if (!current) render();
+  }
+}
+
+for (const [name, panel] of Object.entries(panels)) {
+  const { canvas } = panel;
+  canvas.addEventListener("contextmenu", ev => ev.preventDefault());
+  canvas.addEventListener("pointerdown", ev => {
+    if (ev.button !== 0 && ev.button !== 2) return;
+    const slack = ev.pointerType === "touch" ? TOUCH_SLACK : 0;
+    const at = pictureXY(panel, ev), aim = target(name, at, slack);
+    if (!aim) return;
+    ev.preventDefault();
+    canvas.setPointerCapture(ev.pointerId);
+    canvas.classList.add("dragging");
+    press = { name, at, aim, slack, id: ev.pointerId, reverse: ev.button === 2 || ev.shiftKey };
+  });
+  canvas.addEventListener("pointermove", ev => {
+    const at = pictureXY(panel, ev);
+    if (!press || press.id !== ev.pointerId || press.name !== name) {
+      hover(name, at);
+      return;
+    }
+    const drag = [at[0] - press.at[0], at[1] - press.at[1]];
+    if (Math.hypot(drag[0], drag[1]) < DRAG + press.slack) return;
+    const { aim, at: from } = press;
+    press = null;
+    canvas.classList.remove("dragging");
+    userPlay(aim.kind === "square" ? squareDrag(aim.slot, drag) : ringDrag(aim.rings, from, drag));
+  });
+  canvas.addEventListener("pointerup", ev => {
+    if (!press || press.id !== ev.pointerId || press.name !== name) return;
+    const { aim, reverse } = press;
+    press = null;
+    canvas.classList.remove("dragging");
+    const [x, y] = pictureXY(panel, ev);
+    if (x < panel.x0 || x > panel.x0 + PANEL || y < 0 || y > PANEL) return;   // let go outside: no click
+    if (aim.kind === "ring") {        // the same as pressing the ring's letter
+      const [axis, layer] = aim.rings[0], forward = RING_FORWARD[key(aim.rings[0])];
+      userPlay([axis, [layer], reverse ? -forward : forward]);
+    } else {
+      userPlay(faceTurn(aim.slot, reverse));
+    }
+  });
+  canvas.addEventListener("pointercancel", () => {
+    press = null;
+    canvas.classList.remove("dragging");
+  });
+  canvas.addEventListener("pointerleave", () => { if (!press) hover(name, null); });
+}
+
+window.addEventListener("keydown", ev => {
+  const onControl = ev.target instanceof HTMLElement && ev.target.closest("button, input, select, textarea");
+  if (onControl && (ev.key === " " || ev.key === "Enter")) return;
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") {
+    ev.preventDefault();
+    undo();
+    return;
+  }
+  if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  if (ev.key === " ") {
+    ev.preventDefault();
+    scramble();
+  } else if (ev.key === "Backspace") {
+    ev.preventDefault();
+    undo();
+  } else if (ev.key === "Enter") {
+    ev.preventDefault();
+    solveOrPause();
+  } else if (ev.key === "ArrowRight" && solution && !solution.done && !solution.playing) {
+    ev.preventDefault();
+    stepOnce();
+  } else if (ev.key.length === 1) {
+    const name = MOVES[ev.key.toUpperCase()] ? ev.key.toUpperCase() : ev.key.toLowerCase();
+    if (!MOVES[name]) return;
+    const [axis, layers, q] = MOVES[name];
+    userPlay([axis, layers, ev.shiftKey ? -q : q]);
+  }
+});
+
+$("scramble").addEventListener("click", scramble);
+$("solve").addEventListener("click", solveOrPause);
+$("step").addEventListener("click", stepOnce);
+$("undo").addEventListener("click", undo);
+$("reset").addEventListener("click", () => setState(PICTURE));
+$("solved").addEventListener("click", () => setState(SOLVED));
+
+// --- keeping your place ---
+
+function validMove(m) {
+  return Array.isArray(m) && [0, 1, 2].includes(m[0]) && Array.isArray(m[1])
+    && [1, -1, 2, -2].includes(m[2]) && moveName(m) !== undefined;
+}
+
+function valid(data) {
+  return !!data && Array.isArray(data.state) && data.state.length === 54
+    && data.state.every(c => Object.hasOwn(COLOURS, c))
+    && Array.isArray(data.history) && data.history.every(validMove);
+}
+
+function save() {
+  try { localStorage.setItem(STORE, JSON.stringify({ state, history: played })); } catch (_) { /* storage is optional */ }
+}
+
+function saved() {
+  try {
+    const data = JSON.parse(localStorage.getItem(STORE));
+    return valid(data) ? data : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function start(data) {
+  const restored = valid(data) ? data : saved();
+  if (restored) {
+    state = restored.state.slice();
+    played = restored.history.map(([axis, layers, q]) => [axis, layers.slice(), q]);
+  }
+  readTokens();
+  render();
+  update();
+  // Build the solver's tables in the background, so Solve can start at once.
+  setTimeout(() => solverWorker()?.postMessage({}), 600);
+}
+
+const redraw = () => { if (!current) render(); };
+const retheme = () => { readTokens(); redraw(); };
+new ResizeObserver(redraw).observe($("rings"));
+new ResizeObserver(redraw).observe($("solid"));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
+new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+document.fonts?.load(`700 ${LABEL_PX}px "STIX Two Text"`).then(redraw, () => {});
+document.fonts?.ready.then(redraw);
+
+window.claude?.hot?.snapshot?.(() => ({ state, history: played }));
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+</script>
